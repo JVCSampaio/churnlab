@@ -187,7 +187,7 @@ def train_all(
                 result = evaluate_model(model, X_train, y_train, X_test, y_test)
                 report.results.append(result)
                 models[name] = model
-                mlflow.log_params({"model": name})
+                # Per-model metrics use distinct keys so they can all live in one run.
                 mlflow.log_metrics(
                     {
                         f"{name}_accuracy": result.accuracy,
@@ -197,7 +197,24 @@ def train_all(
                         f"{name}_roc_auc": result.roc_auc,
                     }
                 )
-                mlflow.sklearn.log_model(model, name=name)
+                mlflow.sklearn.log_model(
+                    model,
+                    name=name,
+                    skops_trusted_types=[
+                        "xgboost.core.Booster",
+                        "xgboost.sklearn.XGBClassifier",
+                    ],
+                )
+            # Best model is chosen below; log it as a single run-level param.
+            best = max(report.results, key=lambda r: r.roc_auc)
+            report.best_model = best.name
+            mlflow.log_params(
+                {
+                    "best_model": best.name,
+                    "n_train": report.n_train,
+                    "n_test": report.n_test,
+                }
+            )
     else:
         for name in config.MODELS:
             model = build_model(name)

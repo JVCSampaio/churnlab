@@ -8,6 +8,11 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    env:
+      # MLflow >= 3.x puts the file-store backend in maintenance mode; opt in
+      # explicitly so the pipeline's default tracking works on CI.
+      MLFLOW_ALLOW_FILE_STORE: "true"
+      MLFLOW_TRACKING_URI: "file:///mlruns"
     steps:
       - uses: actions/checkout@v4
 
