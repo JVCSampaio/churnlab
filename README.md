@@ -1,10 +1,12 @@
 # ChurnLab
 
+[![CI](https://github.com/JVCSampaio/churnlab/actions/workflows/ci.yml/badge.svg)](https://github.com/JVCSampaio/churnlab/actions/workflows/ci.yml) · [Portfólio](https://github.com/JVCSampaio)
+
 **Predicting telecom customer churn from real data — a complete, reproducible ML pipeline with a serving API.**
 
 ChurnLab takes a real-world dataset (IBM's *Telco Customer Churn*, 7,043 customers), cleans it, engineers features, trains and compares three models (a logistic-regression baseline against Random Forest and XGBoost), evaluates them with the metrics that actually matter for an imbalanced binary problem, tracks the runs in **MLflow**, and serves the best model through a **FastAPI** endpoint.
 
-It is deliberately small and honest: no Spark, no deep learning, no hype — just the exact stack you need for a data/ML role, built so an interviewer can follow every decision.
+The repository documents data preparation, model evaluation, experiment tracking and API serving, with instructions to reproduce the pipeline.
 
 ---
 
@@ -12,7 +14,7 @@ It is deliberately small and honest: no Spark, no deep learning, no hype — jus
 
 A telecom company loses customers ("churns") — and winning back a lost customer costs far more than keeping an existing one. The task: **given a customer's contract, services, usage, and billing history, predict whether they will churn**, so the retention team can target the highest-risk accounts.
 
-Why this is a *real* ML problem (not a toy):
+Key characteristics of the problem:
 
 - **Class imbalance.** ~26.5% of customers churn. A model that always says "won't churn" scores 73.5% accuracy — useless. So accuracy alone is a trap; we report **precision, recall, F1, and ROC-AUC**.
 - **Noisy, messy source data.** `TotalCharges` is stored as a *string* with blanks; several columns contain `"No internet service"`; `Churn` is `"Yes"`/`"No"`. Cleaning is part of the job.
