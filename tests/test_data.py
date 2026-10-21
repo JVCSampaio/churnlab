@@ -7,6 +7,26 @@ from churnlab import config
 from churnlab.data import clean, encode, engineer, feature_names, load_raw
 
 
+def test_raw_csv_resolves_from_the_install():
+    assert config.RAW_CSV.is_file()
+
+
+def test_tenure_buckets_cover_edges():
+    from churnlab.eda import TENURE_LABELS, tenure_churn_table
+
+    df = pd.DataFrame(
+        {
+            "tenure": [0, 6, 7, 12, 13, 24, 25, 48, 49, 72],
+            "Churn": [1, 0, 1, 0, 1, 0, 1, 0, 1, 0],
+        }
+    )
+    table = tenure_churn_table(df)
+    assert [row["level"] for row in table] == TENURE_LABELS
+    assert sum(row["n"] for row in table) == 10
+    assert table[0]["n"] == 2
+    assert table[0]["churn_rate"] == 0.5
+
+
 def test_load_raw_returns_rows(tmp_path):
     # Write a tiny raw CSV in the expected layout and load it.
     df = pd.DataFrame(

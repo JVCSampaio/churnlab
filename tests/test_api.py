@@ -87,3 +87,13 @@ def test_predict_missing_field_is_422(api_client):
     del bad["Contract"]
     r = api_client.post("/predict", json=bad)
     assert r.status_code == 422
+
+
+def test_predict_uses_tuned_threshold(api_client):
+    reported = api_client.get("/models").json()["threshold"]["value"]
+    payload = dict(HIGH_RISK, customer_id="CUST_001")
+    body = api_client.post("/predict", json=payload).json()
+    assert body["customer_id"] == "CUST_001"
+    assert body["threshold"] == pytest.approx(reported)
+    assert isinstance(body["will_churn"], bool)
+    assert "curve" not in api_client.get("/models").json()["threshold"]
