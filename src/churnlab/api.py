@@ -3,7 +3,8 @@
 Accepts a raw customer record (the same columns as the raw CSV) and returns
 the churn probability and class. The request schema mirrors the raw data so
 callers do not need to pre-encode anything — the server reuses the exact
-encoders and pipeline saved at training time.
+encoders and pipeline saved at training time. The class is taken at the
+cost-tuned threshold stored in the metrics document, not at 0.5.
 """
 from __future__ import annotations
 
@@ -18,12 +19,10 @@ from .data import encode, engineer
 from .model import TrainingReport, load_best_model
 
 
-# ---------------------------------------------------------------------------
-# Request / response schemas
-# ---------------------------------------------------------------------------
 class Customer(BaseModel):
     """A raw customer record, exactly as it appears in the source CSV."""
 
+    customer_id: str | None = None
     gender: str
     SeniorCitizen: int = Field(0, ge=0, le=1)
     Partner: str
@@ -81,13 +80,42 @@ class Prediction(BaseModel):
     customer_id: str | None = None
     churn_probability: float
     will_churn: bool
+    threshold: float
     model: str
     feature_names: list[str]
 
 
-# ---------------------------------------------------------------------------
-# App state
-# ---------------------------------------------------------------------------
+def operating_threshold(report: TrainingReport | None) -> float:
+    """Threshold saved with the training report, or the comparison cutoff."""
+    if report is None or not report.threshold:
+        return float(config.COMPARISON_THRESHOLD)
+    return float(report.threshold.get("value", config.COMPARISON_THRESHOLD))
+
+
+def score_customer(
+    customer: Customer,
+    pipeline,
+    encoders: dict,
+    threshold: float,
+    model_name: str,
+) -> Prediction:
+    """Score one raw record with the training encoders and pipeline."""
+    frame = customer.to_frame()
+    frame["TotalCharges"] = frame["TotalCharges"].astype(float)
+    frame["MultipleLines"] = frame["MultipleLines"].replace("No phone service", "No")
+    frame = engineer(frame)
+    features, _, _ = encode(frame, encoders=encoders)
+    proba = float(pipeline.predict_proba(features)[0, 1])
+    return Prediction(
+        customer_id=customer.customer_id,
+        churn_probability=round(proba, 4),
+        will_churn=bool(proba >= threshold),
+        threshold=round(float(threshold), 4),
+        model=model_name,
+        feature_names=list(features.columns),
+    )
+
+
 class State:
     pipeline = None
     encoders = None
@@ -113,35 +141,33 @@ app = FastAPI(
 
 @app.get("/health")
 def health() -> dict:
-    return {"status": "ok", "model": State.report.best_model if State.report else None}
+    threshold = operating_threshold(State.report)
+    return {
+        "status": "ok",
+        "model": State.report.best_model if State.report else None,
+        "threshold": threshold,
+    }
 
 
 @app.get("/models")
 def models() -> dict:
     if State.report is None:
         raise HTTPException(503, "Model not loaded")
-    return State.report.as_dict()
+    payload = State.report.as_dict()
+    threshold = dict(payload.get("threshold") or {})
+    threshold.pop("curve", None)
+    payload["threshold"] = threshold
+    return payload
 
 
 @app.post("/predict", response_model=Prediction)
 def predict(customer: Customer) -> Prediction:
-    if State.pipeline is None or State.encoders is None:
+    if State.pipeline is None or State.encoders is None or State.report is None:
         raise HTTPException(503, "Model not loaded")
-
-    frame = customer.to_frame()
-    # Apply the same cleaning/feature engineering as training.
-    frame["TotalCharges"] = frame["TotalCharges"].astype(float)
-    frame["MultipleLines"] = frame["MultipleLines"].replace("No phone service", "No")
-    frame = engineer(frame)
-    X, _, _ = encode(frame, encoders=State.encoders)
-
-    proba = float(State.pipeline.predict_proba(X)[0, 1])
-    will_churn = proba >= 0.5
-
-    return Prediction(
-        customer_id=None,
-        churn_probability=round(proba, 4),
-        will_churn=will_churn,
-        model=State.report.best_model,
-        feature_names=list(X.columns),
+    return score_customer(
+        customer,
+        State.pipeline,
+        State.encoders,
+        operating_threshold(State.report),
+        State.report.best_model,
     )

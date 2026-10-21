@@ -1,0 +1,14 @@
+.git
+.venv
+venv
+mlruns
+artifacts
+**/__pycache__
+.pytest_cache
+htmlcov
+.coverage
+coverage.xml
+notebook
+tests
+docs/img
+*.joblib

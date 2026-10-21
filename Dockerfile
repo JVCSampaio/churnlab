@@ -3,20 +3,22 @@ FROM python:3.11-slim
 
 WORKDIR /app
 ENV PYTHONUNBUFFERED=1 \
-    PYTHONPATH=/app/src \
+    MPLBACKEND=Agg \
+    CHURNLAB_ROOT=/app \
+    MLFLOW_ALLOW_FILE_STORE=true \
     MLFLOW_TRACKING_URI=file:///app/mlruns
 
-# Install dependencies first (better layer caching).
-COPY requirements.txt ./
-RUN pip install --no-cache-dir -r requirements.txt
+# XGBoost's wheel needs libgomp at runtime on the slim image.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
 
-# Copy source + data.
-COPY src/ ./src/
-COPY data/ ./data/
+COPY pyproject.toml README.md ./
+COPY src ./src
+RUN pip install --no-cache-dir .
 
-# Train the model at build time so the image ships ready to serve.
-RUN python -m churnlab.pipeline
+COPY data ./data
+RUN python -m churnlab.pipeline --no-track
 
-# Expose the service.
 EXPOSE 8000
 CMD ["uvicorn", "churnlab.api:app", "--host", "0.0.0.0", "--port", "8000"]
